@@ -1,0 +1,10 @@
+{
+  "id": "material-icons-obsidian",
+  "name": "Material Icons",
+  "version": "1.0.0",
+  "minAppVersion": "0.15.0",
+  "description": "Render Google Material Icons inline using !icon[name] syntax.",
+  "author": "meiorz",
+  "authorUrl": "",
+  "isDesktopOnly": false
+}

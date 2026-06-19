@@ -1,0 +1,38 @@
+{
+  "name": "material-icons-obsidian",
+  "version": "1.0.0",
+  "description": "Render Google Material Icons inline using !icon[name] syntax",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc --noEmit --skipLibCheck && node esbuild.config.mjs production",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
+  },
+  "keywords": ["obsidian", "icons", "material-icons"],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/jest": "^29.5.0",
+    "@types/node": "^20.0.0",
+    "builtin-modules": "^3.3.0",
+    "esbuild": "^0.20.0",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0",
+    "obsidian": "latest",
+    "ts-jest": "^29.2.0",
+    "tslib": "^2.6.0",
+    "typescript": "^5.0.0"
+  },
+  "overrides": {
+    "js-yaml": "^4.1.0"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "jsdom",
+    "testMatch": ["**/__tests__/**/*.test.ts"],
+    "moduleNameMapper": {
+      "^obsidian$": "<rootDir>/__mocks__/obsidian.ts"
+    }
+  }
+}

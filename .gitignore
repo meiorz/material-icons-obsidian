@@ -1,0 +1,22 @@
+# Build output
+main.js
+*.js.map
+
+# Dependencies
+node_modules/
+
+# Test coverage
+coverage/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Obsidian (if vault root is inside this repo)
+.obsidian/
