@@ -1,5 +1,5 @@
 {
-  "name": "material-icons-obsidian",
+  "name": "material-icons-inline",
   "version": "1.0.0",
   "description": "Render Google Material Icons inline using !icon[name] syntax",
   "main": "main.js",

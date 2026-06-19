@@ -1,4 +1,4 @@
-# Obsidian Material Icons Plugin
+# Material Icons Inline
 
 Render Google Material Icons in Obsidian using the `!icon[name]` markdown syntax.
 
@@ -33,7 +33,7 @@ Render Google Material Icons in Obsidian using the `!icon[name]` markdown syntax
    npm run build
    ```
 
-4. Reload Obsidian and enable the plugin under **Settings → Community plugins → Material Icons**.
+4. Reload Obsidian and enable the plugin under **Settings → Community plugins → Material Icons Inline**.
 
 ### Development Mode
 
@@ -76,7 +76,7 @@ Icon names must be lowercase with underscores — matching the names shown on th
 
 ## Settings
 
-Access via **Settings → Material Icons**.
+Access via **Settings → Material Icons Inline**.
 
 ### Icon Size
 

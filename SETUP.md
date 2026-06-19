@@ -51,7 +51,7 @@ Replace `~/.obsidian/` with your vault's `.obsidian` folder path if it differs.
 
 1. Open Obsidian
 2. Go to **Settings → Community plugins**
-3. Find **Material Icons** and toggle it on
+3. Find **Material Icons Inline** and toggle it on
 
 ### 6. Test the Plugin
 

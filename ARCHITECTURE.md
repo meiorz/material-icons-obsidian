@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Material Icons Plugin is a lightweight Obsidian markdown post-processor that renders Google Material Icons using the custom `!icon[name]` syntax. It is ~160 lines of TypeScript across two source files.
+Material Icons Inline is a lightweight Obsidian markdown post-processor that renders Google Material Icons using the custom `!icon[name]` syntax. It is ~160 lines of TypeScript across two source files.
 
 ---
 
