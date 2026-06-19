@@ -5,6 +5,6 @@
   "minAppVersion": "0.15.0",
   "description": "Render Google Material Icons inline using !icon[name] syntax.",
   "author": "meiorz",
-  "authorUrl": "",
+  "authorUrl": "https://github.com/meiorz",
   "isDesktopOnly": false
 }

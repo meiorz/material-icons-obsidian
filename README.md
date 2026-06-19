@@ -222,6 +222,10 @@ The test suite covers the icon syntax parser and both CSS validators. Tests live
 
 MIT
 
+## Author
+
+[meiorz](https://github.com/meiorz)
+
 ## Contributing
 
 Pull requests and issues welcome.
