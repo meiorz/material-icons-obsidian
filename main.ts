@@ -1,4 +1,6 @@
 import { App, Notice, Plugin, PluginSettingTab, Setting, MarkdownPostProcessorContext } from 'obsidian';
+import { EditorView, ViewPlugin, ViewUpdate, Decoration, DecorationSet, WidgetType } from '@codemirror/view';
+import { RangeSetBuilder } from '@codemirror/state';
 import { isValidCssSize, isValidCssColor } from './src/parse';
 
 interface MaterialIconsSettings {
@@ -11,6 +13,56 @@ const DEFAULT_SETTINGS: MaterialIconsSettings = {
 	iconColor: 'currentColor'
 }
 
+class IconWidget extends WidgetType {
+	constructor(readonly iconName: string, readonly settings: MaterialIconsSettings) {
+		super();
+	}
+
+	toDOM(): HTMLElement {
+		const icon = document.createElement('i');
+		icon.className = 'material-icons';
+		icon.textContent = this.iconName;
+		icon.style.fontSize = this.settings.iconSize;
+		icon.style.color = this.settings.iconColor;
+		icon.style.verticalAlign = 'middle';
+		icon.style.marginRight = '4px';
+		icon.title = `Icon: ${this.iconName}`;
+		return icon;
+	}
+
+	eq(other: IconWidget): boolean {
+		return other.iconName === this.iconName &&
+			other.settings.iconSize === this.settings.iconSize &&
+			other.settings.iconColor === this.settings.iconColor;
+	}
+}
+
+function buildDecorations(view: EditorView, settings: MaterialIconsSettings): DecorationSet {
+	const builder = new RangeSetBuilder<Decoration>();
+	const iconRegex = /!icon\[([a-z0-9_]+)\]/g;
+	const selection = view.state.selection;
+
+	for (const { from, to } of view.visibleRanges) {
+		const text = view.state.doc.sliceString(from, to);
+		iconRegex.lastIndex = 0;
+		let match;
+
+		while ((match = iconRegex.exec(text)) !== null) {
+			const start = from + match.index;
+			const end = start + match[0].length;
+
+			const cursorInside = selection.ranges.some(r => r.from <= end && r.to >= start);
+			if (cursorInside) continue;
+
+			builder.add(start, end, Decoration.replace({
+				widget: new IconWidget(match[1], settings),
+			}));
+		}
+	}
+
+	return builder.finish();
+}
+
 export default class MaterialIconsPlugin extends Plugin {
 	settings: MaterialIconsSettings;
 	private readonly FONT_LINK_ID = 'material-icons-obsidian-font';
@@ -18,14 +70,38 @@ export default class MaterialIconsPlugin extends Plugin {
 	async onload() {
 		await this.loadSettings();
 		this.addMaterialIconsCSS();
+
 		this.registerMarkdownPostProcessor((el: HTMLElement, ctx: MarkdownPostProcessorContext) => {
 			this.processIcons(el);
 		});
+
+		this.registerEditorExtension(this.buildEditorExtension());
+
 		this.addSettingTab(new MaterialIconsSettingTab(this.app, this));
 	}
 
 	onunload() {
 		document.getElementById(this.FONT_LINK_ID)?.remove();
+	}
+
+	private buildEditorExtension() {
+		const plugin = this;
+		return ViewPlugin.fromClass(
+			class {
+				decorations: DecorationSet;
+
+				constructor(view: EditorView) {
+					this.decorations = buildDecorations(view, plugin.settings);
+				}
+
+				update(update: ViewUpdate) {
+					if (update.docChanged || update.viewportChanged || update.selectionSet) {
+						this.decorations = buildDecorations(update.view, plugin.settings);
+					}
+				}
+			},
+			{ decorations: v => v.decorations }
+		);
 	}
 
 	private addMaterialIconsCSS() {
@@ -129,7 +205,7 @@ class MaterialIconsSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 
 		containerEl.empty();
-		containerEl.createEl('h2', { text: 'Material Icons Settings' });
+		containerEl.createEl('h2', { text: 'Material Icons Inline Settings' });
 
 		new Setting(containerEl)
 			.setName('Icon Size')
