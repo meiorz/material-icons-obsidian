@@ -13,6 +13,8 @@ Render Google Material Icons in Obsidian using the `!icon[name]` markdown syntax
      Save as demo.gif and place it in the repo root, then remove this comment. -->
 ![Demo](demo.gif)
 
+*Note: The animated mouse cursor seen in the demo is by [Haku](https://booth.pm/ja/items/7836614).*
+
 ## Features
 
 - **Live Preview** — icons render as you type; click to reveal raw syntax, click away to render again
@@ -181,6 +183,10 @@ npm run test:coverage # coverage report
 | `!icon[star]` | Star |
 
 [Browse all 2,500+ icons](https://fonts.google.com/icons)
+
+## Acknowledgements
+
+* **Mouse Cursor:** The 戌神ころね (Inugami Korone) animated mouse cursor seen in `demo.gif` is created by [Haku](https://haku15937.booth.pm/) and is not affiliated with this plugin. You can download the cursor [here](https://booth.pm/ja/items/7836614).
 
 ## License
 
