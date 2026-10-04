@@ -4,13 +4,6 @@ Render Google Material Icons in Obsidian using the `!icon[name]` markdown syntax
 
 ## Demo
 
-<!-- Record a short GIF showing:
-     1. Typing !icon[home] in the editor → icon appears immediately
-     2. Clicking the icon → raw text !icon[home] reveals
-     3. Clicking away → icon snaps back
-     4. Switch to reading view → icons render there too
-     Recommended tool: ScreenToGif (free, Windows) or Kap (Mac)
-     Save as demo.gif and place it in the repo root, then remove this comment. -->
 ![Demo](demo.gif)
 
 *Note: The animated mouse cursor seen in the demo is by [Haku](https://booth.pm/ja/items/7836614).*
