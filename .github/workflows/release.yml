@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - "*"
+  # Manual run: releases the version in manifest.json from the selected branch.
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -21,13 +23,14 @@ jobs:
           node-version: "20.x"
           cache: npm
 
-      - name: Check tag matches manifest version
+      - name: Read manifest version
         run: |
           version=$(node -p "require('./manifest.json').version")
-          if [ "$version" != "$GITHUB_REF_NAME" ]; then
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$version" != "$GITHUB_REF_NAME" ]; then
             echo "Tag $GITHUB_REF_NAME does not match manifest.json version $version"
             exit 1
           fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
 
       - run: npm ci
       - run: npm test
@@ -45,7 +48,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            --title "$GITHUB_REF_NAME" \
+          gh release create "$VERSION" \
+            --target "$GITHUB_SHA" \
+            --title "$VERSION" \
             --generate-notes \
             main.js manifest.json styles.css
