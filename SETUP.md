@@ -36,13 +36,13 @@ A successful build produces `main.js` with no TypeScript errors. The TypeScript 
 **Option A: Manual copy**
 
 ```bash
-cp main.js manifest.json ~/.obsidian/plugins/material-icons-obsidian/
+cp main.js manifest.json styles.css ~/.obsidian/plugins/material-icons-inline/
 ```
 
 **Option B: Symlink for active development**
 
 ```bash
-ln -s $(pwd) ~/.obsidian/plugins/material-icons-obsidian
+ln -s $(pwd) ~/.obsidian/plugins/material-icons-inline
 ```
 
 Replace `~/.obsidian/` with your vault's `.obsidian` folder path if it differs.
@@ -87,6 +87,8 @@ material-icons-obsidian/
 ├── __mocks__/
 │   └── obsidian.ts          ← Obsidian API stub for tests
 ├── main.js                  ← Compiled output (auto-generated — do not edit)
+├── styles.src.css           ← Icon styles; build inlines the font into styles.css
+├── styles.css               ← Generated stylesheet with embedded font (do not edit)
 ├── manifest.json            ← Plugin metadata
 ├── package.json
 ├── tsconfig.json
@@ -162,8 +164,7 @@ const DEFAULT_SETTINGS: MaterialIconsSettings = {
 
 1. Reload the vault: `Ctrl+R`
 2. Check syntax: `!icon[home]` — square brackets, lowercase name, no spaces
-3. Check internet connection — the icon font loads from Google CDN
-4. Open DevTools → Network tab, search for `fonts.googleapis.com` — it should return status 200
+3. Check that `styles.css` is in the plugin folder — it contains the bundled icon font (run `npm run build` to generate it)
 
 ### Settings not taking effect
 
