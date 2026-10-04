@@ -15,7 +15,7 @@ Render Google Material Icons in Obsidian using the `!icon[name]` markdown syntax
 - **2,500+ icons** — full Google Material Icons library
 - **Simple syntax** — `!icon[home]`, `!icon[settings]`, `!icon[check_circle]`
 - **Configurable** — set any CSS size or color via plugin settings
-- **Zero configuration** — works out of the box, no API key needed
+- **Works offline** — the icon font is bundled with the plugin; no network requests, no API key
 
 ## Installation
 
@@ -27,8 +27,8 @@ Render Google Material Icons in Obsidian using the `!icon[name]` markdown syntax
 
 ### Manual
 
-1. Download `main.js` and `manifest.json` from the [latest release](https://github.com/meiorz/material-icons-obsidian/releases/latest)
-2. Copy both files to `<vault>/.obsidian/plugins/material-icons-inline/`
+1. Download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/meiorz/material-icons-obsidian/releases/latest)
+2. Copy the three files to `<vault>/.obsidian/plugins/material-icons-inline/`
 3. Enable the plugin under **Settings → Community plugins**
 
 ### Build from Source
@@ -40,7 +40,7 @@ npm install
 npm run build
 ```
 
-Copy `main.js` and `manifest.json` to your vault's plugin folder.
+Copy `main.js`, `manifest.json` and `styles.css` to your vault's plugin folder.
 
 ## Usage
 
@@ -94,10 +94,10 @@ Invalid values fall back to the default silently.
 
 ## How It Works
 
-1. **Font loading** — On startup, injects a `<link>` for the Material Icons font from Google CDN. Injection is idempotent; a `Notice` is shown if the font fails to load.
+1. **Font loading** — The Material Icons font is embedded in `styles.css` (generated at build time from `styles.src.css`), which Obsidian loads and unloads with the plugin. No network requests are made.
 2. **Live Preview** — A CodeMirror 6 `ViewPlugin` scans visible text for `!icon[name]` patterns and replaces them with `Decoration.replace` widgets. Decorations are removed when the cursor enters the token range, revealing the raw syntax.
-3. **Reading view** — A markdown post-processor uses `TreeWalker` to find text nodes and replaces each match with an `<i class="material-icons">` element via `DocumentFragment`.
-4. **Cleanup** — On plugin unload, the injected font `<link>` is removed from `document.head`.
+3. **Reading view** — A markdown post-processor uses `TreeWalker` to find text nodes and replaces each match with an `<i class="material-icons-inline">` element via `DocumentFragment`.
+4. **Styling** — Icon size and color are passed to `styles.css` as the CSS variables `--material-icons-inline-size` and `--material-icons-inline-color`.
 
 ## Customization
 
@@ -142,8 +142,8 @@ npm run test:coverage # coverage report
 
 ### Icons not showing in reading view
 
-- Check your internet connection — the icon font loads from Google CDN
-- Open DevTools (`Ctrl+Shift+I`) → Network tab → look for `fonts.googleapis.com` returning status 200
+- Make sure `styles.css` is in the plugin folder next to `main.js` (it contains the icon font)
+- Reload the vault with `Ctrl+R`
 
 ### Wrong icon appears
 
@@ -180,6 +180,8 @@ npm run test:coverage # coverage report
 ## Acknowledgements
 
 * **Mouse Cursor:** The 戌神ころね (Inugami Korone) animated mouse cursor seen in `demo.gif` is created by [Haku](https://haku15937.booth.pm/) and is not affiliated with this plugin. You can download the cursor [here](https://booth.pm/ja/items/7836614).
+
+* **Icon font:** [Material Icons](https://github.com/google/material-design-icons) by Google, licensed under the [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0). The font is bundled from the [`material-icons`](https://www.npmjs.com/package/material-icons) npm package.
 
 ## License
 

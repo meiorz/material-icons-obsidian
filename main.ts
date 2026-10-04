@@ -1,7 +1,7 @@
-import { App, Notice, Plugin, PluginSettingTab, Setting, MarkdownPostProcessorContext } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting } from 'obsidian';
 import { EditorView, ViewPlugin, ViewUpdate, Decoration, DecorationSet, WidgetType } from '@codemirror/view';
 import { RangeSetBuilder } from '@codemirror/state';
-import { isValidCssSize, isValidCssColor } from './src/parse';
+import { parseIconSyntax, isValidCssSize, isValidCssColor } from './src/parse';
 
 interface MaterialIconsSettings {
 	iconSize: string;
@@ -13,21 +13,28 @@ const DEFAULT_SETTINGS: MaterialIconsSettings = {
 	iconColor: 'currentColor'
 }
 
+// Font, layout and default styling live in styles.css; only the user-configurable
+// size and color are passed in as CSS variables.
+function createIconElement(iconName: string, settings: MaterialIconsSettings): HTMLElement {
+	const icon = createEl('i', {
+		cls: 'material-icons-inline',
+		text: iconName,
+		attr: { title: `Icon: ${iconName}` },
+	});
+	icon.setCssProps({
+		'--material-icons-inline-size': settings.iconSize,
+		'--material-icons-inline-color': settings.iconColor,
+	});
+	return icon;
+}
+
 class IconWidget extends WidgetType {
 	constructor(readonly iconName: string, readonly settings: MaterialIconsSettings) {
 		super();
 	}
 
 	toDOM(): HTMLElement {
-		const icon = document.createElement('i');
-		icon.className = 'material-icons';
-		icon.textContent = this.iconName;
-		icon.style.fontSize = this.settings.iconSize;
-		icon.style.color = this.settings.iconColor;
-		icon.style.verticalAlign = 'middle';
-		icon.style.marginRight = '4px';
-		icon.title = `Icon: ${this.iconName}`;
-		return icon;
+		return createIconElement(this.iconName, this.settings);
 	}
 
 	eq(other: IconWidget): boolean {
@@ -45,9 +52,9 @@ function buildDecorations(view: EditorView, settings: MaterialIconsSettings): De
 	for (const { from, to } of view.visibleRanges) {
 		const text = view.state.doc.sliceString(from, to);
 		iconRegex.lastIndex = 0;
-		let match;
+		let match = iconRegex.exec(text);
 
-		while ((match = iconRegex.exec(text)) !== null) {
+		for (; match !== null; match = iconRegex.exec(text)) {
 			const start = from + match.index;
 			const end = start + match[0].length;
 
@@ -65,13 +72,11 @@ function buildDecorations(view: EditorView, settings: MaterialIconsSettings): De
 
 export default class MaterialIconsPlugin extends Plugin {
 	settings: MaterialIconsSettings;
-	private readonly FONT_LINK_ID = 'material-icons-obsidian-font';
 
 	async onload() {
 		await this.loadSettings();
-		this.addMaterialIconsCSS();
 
-		this.registerMarkdownPostProcessor((el: HTMLElement, ctx: MarkdownPostProcessorContext) => {
+		this.registerMarkdownPostProcessor((el: HTMLElement) => {
 			this.processIcons(el);
 		});
 
@@ -80,23 +85,19 @@ export default class MaterialIconsPlugin extends Plugin {
 		this.addSettingTab(new MaterialIconsSettingTab(this.app, this));
 	}
 
-	onunload() {
-		document.getElementById(this.FONT_LINK_ID)?.remove();
-	}
-
 	private buildEditorExtension() {
-		const plugin = this;
+		const getSettings = () => this.settings;
 		return ViewPlugin.fromClass(
 			class {
 				decorations: DecorationSet;
 
 				constructor(view: EditorView) {
-					this.decorations = buildDecorations(view, plugin.settings);
+					this.decorations = buildDecorations(view, getSettings());
 				}
 
 				update(update: ViewUpdate) {
 					if (update.docChanged || update.viewportChanged || update.selectionSet) {
-						this.decorations = buildDecorations(update.view, plugin.settings);
+						this.decorations = buildDecorations(update.view, getSettings());
 					}
 				}
 			},
@@ -104,88 +105,34 @@ export default class MaterialIconsPlugin extends Plugin {
 		);
 	}
 
-	private addMaterialIconsCSS() {
-		if (document.getElementById(this.FONT_LINK_ID)) return;
-
-		const link = document.createElement('link');
-		link.id = this.FONT_LINK_ID;
-		link.rel = 'stylesheet';
-		link.href = 'https://fonts.googleapis.com/icon?family=Material+Icons';
-		link.addEventListener('error', () => {
-			new Notice(
-				'Material Icons: failed to load icon font. ' +
-				'Check your internet connection or firewall settings.',
-				8000
-			);
-		});
-		document.head.appendChild(link);
-	}
-
 	private processIcons(el: HTMLElement) {
-		const walker = document.createTreeWalker(
-			el,
-			NodeFilter.SHOW_TEXT
-		);
+		const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+		const nodesToReplace: Text[] = [];
 
-		const nodesToReplace: Array<{ node: Node, parent: Node }> = [];
-		let currentNode;
-
-		while (currentNode = walker.nextNode()) {
-			if (currentNode.nodeValue?.includes('!icon[') && currentNode.parentNode) {
-				nodesToReplace.push({
-					node: currentNode,
-					parent: currentNode.parentNode,
-				});
+		for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+			if (node.nodeValue?.includes('!icon[') && node.parentNode) {
+				nodesToReplace.push(node as Text);
 			}
 		}
 
-		nodesToReplace.forEach(({ node, parent }) => {
-			const fragment = this.parseAndCreateIconHTML(node.nodeValue!);
-			parent.replaceChild(fragment, node);
+		nodesToReplace.forEach(node => {
+			node.replaceWith(this.parseAndCreateIcons(node.nodeValue ?? ''));
 		});
 	}
 
-	private parseAndCreateIconHTML(text: string): DocumentFragment {
-		const fragment = document.createDocumentFragment();
-		const iconRegex = /!icon\[([^\]]+)\]/g;
-		let lastIndex = 0;
-		let match;
-
-		while ((match = iconRegex.exec(text)) !== null) {
-			if (match.index > lastIndex) {
-				fragment.appendChild(
-					document.createTextNode(text.substring(lastIndex, match.index))
-				);
+	private parseAndCreateIcons(text: string): DocumentFragment {
+		return createFragment(fragment => {
+			for (const segment of parseIconSyntax(text)) {
+				fragment.appendChild(segment.type === 'icon'
+					? createIconElement(segment.value, this.settings)
+					: document.createTextNode(segment.value));
 			}
-
-			const iconName = match[1].trim();
-			fragment.appendChild(this.createIconElement(iconName));
-			lastIndex = iconRegex.lastIndex;
-		}
-
-		if (lastIndex < text.length) {
-			fragment.appendChild(
-				document.createTextNode(text.substring(lastIndex))
-			);
-		}
-
-		return fragment;
-	}
-
-	private createIconElement(iconName: string): HTMLElement {
-		const icon = document.createElement('i');
-		icon.className = 'material-icons';
-		icon.textContent = iconName;
-		icon.style.fontSize = this.settings.iconSize;
-		icon.style.color = this.settings.iconColor;
-		icon.style.verticalAlign = 'middle';
-		icon.style.marginRight = '4px';
-		icon.title = `Icon: ${iconName}`;
-		return icon;
+		});
 	}
 
 	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		const data = (await this.loadData()) as Partial<MaterialIconsSettings> | null;
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, data);
 	}
 
 	async saveSettings() {
@@ -205,10 +152,9 @@ class MaterialIconsSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 
 		containerEl.empty();
-		containerEl.createEl('h2', { text: 'Material Icons Inline Settings' });
 
 		new Setting(containerEl)
-			.setName('Icon Size')
+			.setName('Icon size')
 			.setDesc('Set the size of rendered icons (e.g., 24px, 1.5em)')
 			.addText(text => text
 				.setPlaceholder('24px')
@@ -219,7 +165,7 @@ class MaterialIconsSettingTab extends PluginSettingTab {
 				}));
 
 		new Setting(containerEl)
-			.setName('Icon Color')
+			.setName('Icon color')
 			.setDesc('Set the color of icons (CSS color value)')
 			.addText(text => text
 				.setPlaceholder('currentColor')
@@ -229,7 +175,7 @@ class MaterialIconsSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 
-		containerEl.createEl('h3', { text: 'Usage' });
+		new Setting(containerEl).setName('Usage').setHeading();
 		const usageEl = containerEl.createEl('p');
 		usageEl.createEl('strong', { text: 'Syntax: ' });
 		usageEl.createEl('code', { text: '!icon[icon_name]' });
@@ -239,7 +185,7 @@ class MaterialIconsSettingTab extends PluginSettingTab {
 		usageEl.createEl('br');
 		usageEl.createEl('strong', { text: 'Find icons: ' });
 		usageEl.createEl('a', {
-			text: 'Google Material Icons',
+			text: 'Browse the icon library',
 			href: 'https://fonts.google.com/icons',
 			attr: { target: '_blank', rel: 'noopener noreferrer' },
 		});

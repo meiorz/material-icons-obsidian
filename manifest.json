@@ -1,8 +1,8 @@
 {
   "id": "material-icons-inline",
   "name": "Material Icons Inline",
-  "version": "1.0.0",
-  "minAppVersion": "0.15.0",
+  "version": "1.0.1",
+  "minAppVersion": "1.4.0",
   "description": "Render Google Material Icons inline using !icon[name] syntax.",
   "author": "meiorz",
   "authorUrl": "https://github.com/meiorz",

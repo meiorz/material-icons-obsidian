@@ -26,9 +26,6 @@ src/parse.ts     Pure functions: icon syntax parser, CSS validators (no DOM, no 
 ```
 Load settings from disk
   ↓
-Inject Material Icons <link> into document.head
-  (no-op if already present; shows Notice on CDN failure)
-  ↓
 Register markdown post-processor     ← reading view
   ↓
 Register CM6 editor extension        ← live preview
@@ -39,10 +36,9 @@ Register settings tab
 ### Shutdown (`onunload`)
 
 ```
-Remove the injected <link> tag from document.head
+Nothing to clean up — Obsidian removes styles.css and the registered
+post-processor, editor extension and settings tab automatically.
 ```
-
-The injection and removal are symmetric — enabling then disabling the plugin leaves `document.head` in its original state.
 
 ---
 
@@ -54,13 +50,10 @@ Extends Obsidian's `Plugin` class.
 
 | Method | Responsibility |
 |---|---|
-| `onload()` | Initialise: load settings, inject CSS, register post-processor, editor extension, settings tab |
-| `onunload()` | Remove injected font `<link>` by element ID |
-| `addMaterialIconsCSS()` | Idempotent CDN injection with error handling |
+| `onload()` | Initialise: load settings, register post-processor, editor extension, settings tab |
 | `buildEditorExtension()` | Returns CM6 `ViewPlugin` for live preview rendering |
 | `processIcons(el)` | TreeWalker traversal for reading view; collects and replaces text nodes |
-| `parseAndCreateIconHTML(text)` | Regex parse → `DocumentFragment` of text nodes and icon elements |
-| `createIconElement(name)` | Build a single `<i class="material-icons">` element |
+| `parseAndCreateIcons(text)` | `parseIconSyntax()` → `DocumentFragment` of text nodes and icon elements |
 | `loadSettings()` / `saveSettings()` | Obsidian `loadData` / `saveData` wrappers |
 
 ### `IconWidget` (`main.ts`)
@@ -69,7 +62,7 @@ Extends CM6's `WidgetType`. Renders a single icon in the editor as a replacement
 
 | Method | Responsibility |
 |---|---|
-| `toDOM()` | Creates and returns the `<i class="material-icons">` element |
+| `toDOM()` | Creates and returns the `<i class="material-icons-inline">` element |
 | `eq(other)` | Returns true if icon name and settings are identical — prevents unnecessary DOM re-creation |
 
 ### `buildDecorations(view, settings)` (`main.ts`)
@@ -109,7 +102,7 @@ For each match:
 DecorationSet applied to editor view
   ↓
 IconWidget.toDOM() called for each new decoration
-  → returns <i class="material-icons">name</i>
+  → returns <i class="material-icons-inline">name</i>
 ```
 
 ### Cursor-Reveal Detail
@@ -137,7 +130,7 @@ TreeWalker visits only text nodes (skips element nodes)
 Collect text nodes where nodeValue includes '!icon[' AND parentNode is non-null
   ↓
 For each collected node:
-  parseAndCreateIconHTML() → DocumentFragment
+  parseAndCreateIcons() → DocumentFragment
   parent.replaceChild(fragment, node)   ← one DOM mutation per text node
 ```
 
@@ -171,29 +164,16 @@ TreeWalker finds text node "Click !icon[home] to go home"
 Regex extracts "home"
 Fragment: [TextNode("Click "), <i>home</i>, TextNode(" to go home")]
 replaceChild() swaps node for fragment
-Final DOM: <p>Click <i class="material-icons">home</i> to go home</p>
+Final DOM: <p>Click <i class="material-icons-inline">home</i> to go home</p>
 ```
 
 ---
 
-## CDN Font Loading
+## Font Loading
 
-```typescript
-private addMaterialIconsCSS() {
-    if (document.getElementById(this.FONT_LINK_ID)) return;  // idempotent
+Plugins may not inject remote stylesheets, so the font ships with the plugin. `esbuild.config.mjs` reads `node_modules/material-icons/iconfont/material-icons.woff2`, base64-encodes it, and writes `styles.css` from `styles.src.css` with the font inlined as a `data:` URL. Obsidian loads `styles.css` automatically when the plugin is enabled.
 
-    const link = document.createElement('link');
-    link.id = this.FONT_LINK_ID;
-    link.rel = 'stylesheet';
-    link.href = 'https://fonts.googleapis.com/icon?family=Material+Icons';
-    link.addEventListener('error', () => {
-        new Notice('Material Icons: failed to load icon font...', 8000);
-    });
-    document.head.appendChild(link);
-}
-```
-
-The `id` attribute prevents duplicate injection across hot-reloads. The `error` listener surfaces CDN failures via Obsidian's `Notice` API.
+Each icon element gets the `material-icons-inline` class; the configured size and color are set per element with `setCssProps()` as `--material-icons-inline-size` and `--material-icons-inline-color`.
 
 ---
 
@@ -240,11 +220,11 @@ npm run test:coverage # coverage report for src/parse.ts
 
 ### Change icon syntax
 
-Edit the regex in both `buildDecorations()` (live preview) and `parseAndCreateIconHTML()` (reading view) in `main.ts`, then update the tests in `__tests__/parse.test.ts`.
+Edit the regex in both `buildDecorations()` (live preview) and `ICON_PATTERN` in `src/parse.ts` (reading view) in `main.ts`, then update the tests in `__tests__/parse.test.ts`.
 
 ### Add custom icon styling
 
-Extend `IconWidget.toDOM()` and `createIconElement()` in `main.ts`:
+Extend the module-level `createIconElement()` in `main.ts` (used by both views), or add rules to `styles.src.css`:
 
 ```typescript
 icon.setAttribute('data-icon', iconName);
@@ -257,10 +237,6 @@ icon.classList.add('my-custom-class');
 2. Add a `new Setting(...)` block in `MaterialIconsSettingTab.display()`
 3. Pass the new setting into `buildDecorations()` and/or `createIconElement()`
 4. Add a validator in `src/parse.ts` with a corresponding test
-
-### Support offline / self-hosted fonts
-
-Replace the CDN `<link>` in `addMaterialIconsCSS()` with a bundled `styles.css` registered via `this.addStyle(...)`.
 
 ---
 
@@ -275,16 +251,15 @@ Replace the CDN `<link>` in `addMaterialIconsCSS()` with a bundled `styles.css` 
 | `esbuild` | Bundling to CommonJS for Obsidian |
 | `jest` + `ts-jest` | Test runner |
 | `jest-environment-jsdom` | DOM API in test environment |
-| Google Fonts CDN | Material Icons font at runtime |
+| `material-icons` | Material Icons woff2 font, inlined into `styles.css` at build time |
 
 ---
 
 ## Known Limitations
 
 1. **Source mode** — CM6 decorations do not apply in Source mode, only in Live Preview. Icons still render in reading view.
-2. **Online dependency** — requires internet access to load the icon font. An offline vault shows a Notice but icons render as placeholder squares.
-3. **Icon name typos** — invalid names silently render as blank squares (the Material Icons font's placeholder glyph). There is no warning for unrecognised names.
-4. **No escape syntax** — there is no way to display the literal text `!icon[home]` in a rendered note.
+2. **Icon name typos** — invalid names silently render as blank squares (the Material Icons font's placeholder glyph). There is no warning for unrecognised names.
+3. **No escape syntax** — there is no way to display the literal text `!icon[home]` in a rendered note.
 
 ---
 
@@ -293,6 +268,5 @@ Replace the CDN `<link>` in `addMaterialIconsCSS()` with a bundled `styles.css` 
 - [ ] Source mode support via a CM6 `syntaxHighlighting` extension
 - [ ] Icon name lookup against a known-good list to surface typos as warnings
 - [ ] Escape syntax: `\!icon[home]` renders as literal text
-- [ ] Offline / self-hosted font support via bundled `styles.css`
 - [ ] Additional icon libraries (Bootstrap Icons, Lucide, etc.)
 - [ ] Icon picker in settings preview
