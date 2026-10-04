@@ -12,3 +12,4 @@ export class Notice {
 	constructor(public message: string, public duration?: number) {}
 }
 export type MarkdownPostProcessorContext = object;
+export const editorLivePreviewField = {};

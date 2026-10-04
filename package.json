@@ -13,6 +13,7 @@
   "keywords": ["obsidian", "icons", "material-icons"],
   "license": "MIT",
   "devDependencies": {
+    "@codemirror/language": "^6.0.0",
     "@codemirror/state": "^6.0.0",
     "@codemirror/view": "^6.0.0",
     "@types/jest": "^29.5.0",
@@ -33,6 +34,7 @@
     "preset": "ts-jest",
     "testEnvironment": "jsdom",
     "testMatch": ["**/__tests__/**/*.test.ts"],
+    "moduleFileExtensions": ["ts", "js", "json"],
     "moduleNameMapper": {
       "^obsidian$": "<rootDir>/__mocks__/obsidian.ts"
     }

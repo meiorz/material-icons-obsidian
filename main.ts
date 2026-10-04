@@ -1,7 +1,8 @@
-import { App, Notice, Plugin, PluginSettingTab, Setting, MarkdownPostProcessorContext } from 'obsidian';
+import { App, Notice, Plugin, PluginSettingTab, Setting, editorLivePreviewField } from 'obsidian';
 import { EditorView, ViewPlugin, ViewUpdate, Decoration, DecorationSet, WidgetType } from '@codemirror/view';
-import { RangeSetBuilder } from '@codemirror/state';
-import { isValidCssSize, isValidCssColor } from './src/parse';
+import { EditorState, RangeSetBuilder } from '@codemirror/state';
+import { syntaxTree } from '@codemirror/language';
+import { findIconMatches, parseIconSyntax, isValidCssSize, isValidCssColor } from './src/parse';
 
 interface MaterialIconsSettings {
 	iconSize: string;
@@ -13,49 +14,67 @@ const DEFAULT_SETTINGS: MaterialIconsSettings = {
 	iconColor: 'currentColor'
 }
 
+// Icons read their size and color from these variables, so a settings change
+// restyles every rendered icon without re-rendering notes or editors.
+const SIZE_VAR = '--material-icons-inline-size';
+const COLOR_VAR = '--material-icons-inline-color';
+
+// Matches Obsidian's syntax-node names for inline code and fenced/indented code blocks.
+const CODE_NODE = /inline-code|codeblock/;
+
+function createIconElement(iconName: string): HTMLElement {
+	const icon = document.createElement('i');
+	icon.className = 'material-icons';
+	icon.textContent = iconName;
+	icon.style.fontSize = `var(${SIZE_VAR}, ${DEFAULT_SETTINGS.iconSize})`;
+	icon.style.color = `var(${COLOR_VAR}, ${DEFAULT_SETTINGS.iconColor})`;
+	icon.style.verticalAlign = 'middle';
+	icon.style.marginRight = '4px';
+	icon.title = `Icon: ${iconName}`;
+	return icon;
+}
+
 class IconWidget extends WidgetType {
-	constructor(readonly iconName: string, readonly settings: MaterialIconsSettings) {
+	constructor(readonly iconName: string) {
 		super();
 	}
 
 	toDOM(): HTMLElement {
-		const icon = document.createElement('i');
-		icon.className = 'material-icons';
-		icon.textContent = this.iconName;
-		icon.style.fontSize = this.settings.iconSize;
-		icon.style.color = this.settings.iconColor;
-		icon.style.verticalAlign = 'middle';
-		icon.style.marginRight = '4px';
-		icon.title = `Icon: ${this.iconName}`;
-		return icon;
+		return createIconElement(this.iconName);
 	}
 
 	eq(other: IconWidget): boolean {
-		return other.iconName === this.iconName &&
-			other.settings.iconSize === this.settings.iconSize &&
-			other.settings.iconColor === this.settings.iconColor;
+		return other.iconName === this.iconName;
 	}
 }
 
-function buildDecorations(view: EditorView, settings: MaterialIconsSettings): DecorationSet {
+function isInsideCode(state: EditorState, pos: number): boolean {
+	let node = syntaxTree(state).resolveInner(pos, 1);
+	while (!CODE_NODE.test(node.name)) {
+		if (!node.parent) return false;
+		node = node.parent;
+	}
+	return true;
+}
+
+function buildDecorations(view: EditorView): DecorationSet {
+	if (!view.state.field(editorLivePreviewField, false)) return Decoration.none;
+
 	const builder = new RangeSetBuilder<Decoration>();
-	const iconRegex = /!icon\[([a-z0-9_]+)\]/g;
 	const selection = view.state.selection;
 
 	for (const { from, to } of view.visibleRanges) {
 		const text = view.state.doc.sliceString(from, to);
-		iconRegex.lastIndex = 0;
-		let match;
 
-		while ((match = iconRegex.exec(text)) !== null) {
-			const start = from + match.index;
-			const end = start + match[0].length;
+		for (const match of findIconMatches(text)) {
+			const start = from + match.from;
+			const end = from + match.to;
 
 			const cursorInside = selection.ranges.some(r => r.from <= end && r.to >= start);
-			if (cursorInside) continue;
+			if (cursorInside || isInsideCode(view.state, start)) continue;
 
 			builder.add(start, end, Decoration.replace({
-				widget: new IconWidget(match[1], settings),
+				widget: new IconWidget(match.name),
 			}));
 		}
 	}
@@ -63,45 +82,53 @@ function buildDecorations(view: EditorView, settings: MaterialIconsSettings): De
 	return builder.finish();
 }
 
+const iconViewPlugin = ViewPlugin.fromClass(
+	class {
+		decorations: DecorationSet;
+
+		constructor(view: EditorView) {
+			this.decorations = buildDecorations(view);
+		}
+
+		update(update: ViewUpdate) {
+			if (update.docChanged || update.viewportChanged || update.selectionSet ||
+				syntaxTree(update.startState) !== syntaxTree(update.state) ||
+				update.startState.field(editorLivePreviewField, false) !==
+					update.state.field(editorLivePreviewField, false)) {
+				this.decorations = buildDecorations(update.view);
+			}
+		}
+	},
+	{ decorations: v => v.decorations }
+);
+
 export default class MaterialIconsPlugin extends Plugin {
 	settings: MaterialIconsSettings;
 	private readonly FONT_LINK_ID = 'material-icons-obsidian-font';
 
 	async onload() {
 		await this.loadSettings();
+		this.applySettings();
 		this.addMaterialIconsCSS();
 
-		this.registerMarkdownPostProcessor((el: HTMLElement, ctx: MarkdownPostProcessorContext) => {
+		this.registerMarkdownPostProcessor((el: HTMLElement) => {
 			this.processIcons(el);
 		});
 
-		this.registerEditorExtension(this.buildEditorExtension());
+		this.registerEditorExtension(iconViewPlugin);
 
 		this.addSettingTab(new MaterialIconsSettingTab(this.app, this));
 	}
 
 	onunload() {
 		document.getElementById(this.FONT_LINK_ID)?.remove();
+		document.body.style.removeProperty(SIZE_VAR);
+		document.body.style.removeProperty(COLOR_VAR);
 	}
 
-	private buildEditorExtension() {
-		const plugin = this;
-		return ViewPlugin.fromClass(
-			class {
-				decorations: DecorationSet;
-
-				constructor(view: EditorView) {
-					this.decorations = buildDecorations(view, plugin.settings);
-				}
-
-				update(update: ViewUpdate) {
-					if (update.docChanged || update.viewportChanged || update.selectionSet) {
-						this.decorations = buildDecorations(update.view, plugin.settings);
-					}
-				}
-			},
-			{ decorations: v => v.decorations }
-		);
+	private applySettings() {
+		document.body.style.setProperty(SIZE_VAR, this.settings.iconSize);
+		document.body.style.setProperty(COLOR_VAR, this.settings.iconColor);
 	}
 
 	private addMaterialIconsCSS() {
@@ -127,61 +154,32 @@ export default class MaterialIconsPlugin extends Plugin {
 			NodeFilter.SHOW_TEXT
 		);
 
-		const nodesToReplace: Array<{ node: Node, parent: Node }> = [];
+		const nodesToReplace: Text[] = [];
 		let currentNode;
 
-		while (currentNode = walker.nextNode()) {
-			if (currentNode.nodeValue?.includes('!icon[') && currentNode.parentNode) {
-				nodesToReplace.push({
-					node: currentNode,
-					parent: currentNode.parentNode,
-				});
+		while (currentNode = walker.nextNode() as Text | null) {
+			if (currentNode.nodeValue?.includes('!icon[') &&
+				currentNode.parentElement &&
+				!currentNode.parentElement.closest('code, pre')) {
+				nodesToReplace.push(currentNode);
 			}
 		}
 
-		nodesToReplace.forEach(({ node, parent }) => {
-			const fragment = this.parseAndCreateIconHTML(node.nodeValue!);
-			parent.replaceChild(fragment, node);
+		nodesToReplace.forEach(node => {
+			const segments = parseIconSyntax(node.nodeValue!);
+			if (!segments.some(s => s.type === 'icon')) return;
+			node.replaceWith(this.createFragment(segments));
 		});
 	}
 
-	private parseAndCreateIconHTML(text: string): DocumentFragment {
+	private createFragment(segments: ReturnType<typeof parseIconSyntax>): DocumentFragment {
 		const fragment = document.createDocumentFragment();
-		const iconRegex = /!icon\[([^\]]+)\]/g;
-		let lastIndex = 0;
-		let match;
-
-		while ((match = iconRegex.exec(text)) !== null) {
-			if (match.index > lastIndex) {
-				fragment.appendChild(
-					document.createTextNode(text.substring(lastIndex, match.index))
-				);
-			}
-
-			const iconName = match[1].trim();
-			fragment.appendChild(this.createIconElement(iconName));
-			lastIndex = iconRegex.lastIndex;
+		for (const segment of segments) {
+			fragment.appendChild(segment.type === 'icon'
+				? createIconElement(segment.value)
+				: document.createTextNode(segment.value));
 		}
-
-		if (lastIndex < text.length) {
-			fragment.appendChild(
-				document.createTextNode(text.substring(lastIndex))
-			);
-		}
-
 		return fragment;
-	}
-
-	private createIconElement(iconName: string): HTMLElement {
-		const icon = document.createElement('i');
-		icon.className = 'material-icons';
-		icon.textContent = iconName;
-		icon.style.fontSize = this.settings.iconSize;
-		icon.style.color = this.settings.iconColor;
-		icon.style.verticalAlign = 'middle';
-		icon.style.marginRight = '4px';
-		icon.title = `Icon: ${iconName}`;
-		return icon;
 	}
 
 	async loadSettings() {
@@ -190,6 +188,7 @@ export default class MaterialIconsPlugin extends Plugin {
 
 	async saveSettings() {
 		await this.saveData(this.settings);
+		this.applySettings();
 	}
 }
 

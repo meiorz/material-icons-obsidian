@@ -55,13 +55,16 @@ Extends Obsidian's `Plugin` class.
 | Method | Responsibility |
 |---|---|
 | `onload()` | Initialise: load settings, inject CSS, register post-processor, editor extension, settings tab |
-| `onunload()` | Remove injected font `<link>` by element ID |
+| `onunload()` | Remove injected font `<link>` by element ID and the CSS variables from `document.body` |
+| `applySettings()` | Write icon size and color to CSS variables on `document.body` |
 | `addMaterialIconsCSS()` | Idempotent CDN injection with error handling |
-| `buildEditorExtension()` | Returns CM6 `ViewPlugin` for live preview rendering |
-| `processIcons(el)` | TreeWalker traversal for reading view; collects and replaces text nodes |
-| `parseAndCreateIconHTML(text)` | Regex parse → `DocumentFragment` of text nodes and icon elements |
-| `createIconElement(name)` | Build a single `<i class="material-icons">` element |
-| `loadSettings()` / `saveSettings()` | Obsidian `loadData` / `saveData` wrappers |
+| `processIcons(el)` | TreeWalker traversal for reading view; collects and replaces text nodes outside `<code>`/`<pre>` |
+| `createFragment(segments)` | `parseIconSyntax()` segments → `DocumentFragment` of text nodes and icon elements |
+| `loadSettings()` / `saveSettings()` | Obsidian `loadData` / `saveData` wrappers; saving also calls `applySettings()` |
+
+### `createIconElement(name)` (`main.ts`)
+
+Builds a single `<i class="material-icons">` element. Shared by reading view and `IconWidget`. Size and color come from the `--material-icons-inline-size` / `--material-icons-inline-color` CSS variables, so settings changes restyle every existing icon without re-rendering.
 
 ### `IconWidget` (`main.ts`)
 
@@ -69,12 +72,12 @@ Extends CM6's `WidgetType`. Renders a single icon in the editor as a replacement
 
 | Method | Responsibility |
 |---|---|
-| `toDOM()` | Creates and returns the `<i class="material-icons">` element |
-| `eq(other)` | Returns true if icon name and settings are identical — prevents unnecessary DOM re-creation |
+| `toDOM()` | Returns `createIconElement(iconName)` |
+| `eq(other)` | Returns true if the icon name is identical — prevents unnecessary DOM re-creation |
 
-### `buildDecorations(view, settings)` (`main.ts`)
+### `buildDecorations(view)` (`main.ts`)
 
-Pure function called on every editor update. Scans visible ranges for `!icon[name]` matches and builds a `DecorationSet` of `Decoration.replace` widgets, skipping any range that overlaps the current cursor selection (which reveals the raw syntax instead).
+Called on editor updates. Returns no decorations outside Live Preview (`editorLivePreviewField`). Otherwise scans visible ranges with `findIconMatches()` and builds a `DecorationSet` of `Decoration.replace` widgets, skipping any range that overlaps the current cursor selection (which reveals the raw syntax instead) or starts inside inline code or a code block (checked against the syntax tree).
 
 ### `MaterialIconsSettingTab` (`main.ts`)
 
@@ -86,6 +89,7 @@ Pure functions with no side effects. Imported by `main.ts` and tested directly b
 
 | Export | Description |
 |---|---|
+| `findIconMatches(text)` | Returns `{ from, to, name }` for every valid `!icon[name]` token — the single source of truth for both views |
 | `parseIconSyntax(text)` | Splits a string into `{ type: 'text' \| 'icon', value: string }[]` segments |
 | `isValidCssSize(value)` | Returns true for values like `24px`, `1.5em`, `2rem`, `100%` |
 | `isValidCssColor(value)` | Returns true for hex, rgb/rgba/hsl, named colors, `currentColor` |
@@ -98,12 +102,16 @@ Pure functions with no side effects. Imported by `main.ts` and tested directly b
 User types or moves cursor
   ↓
 CM6 ViewPlugin.update() fires
-  (triggers on: docChanged, viewportChanged, selectionSet)
+  (triggers on: docChanged, viewportChanged, selectionSet,
+   syntax tree progress, Live Preview ↔ Source toggle)
   ↓
-buildDecorations() scans visible ranges with /!icon\[([a-z0-9_]+)\]/g
+Source mode? → no decorations
+  ↓
+buildDecorations() scans visible ranges with findIconMatches()
   ↓
 For each match:
   cursor overlaps range? → skip (raw syntax visible)
+  inside code?           → skip (literal text)
   cursor elsewhere?      → Decoration.replace({ widget: IconWidget })
   ↓
 DecorationSet applied to editor view
@@ -134,11 +142,12 @@ registerMarkdownPostProcessor callback fires
   ↓
 TreeWalker visits only text nodes (skips element nodes)
   ↓
-Collect text nodes where nodeValue includes '!icon[' AND parentNode is non-null
+Collect text nodes where nodeValue includes '!icon[' AND the node is not inside <code>/<pre>
   ↓
 For each collected node:
-  parseAndCreateIconHTML() → DocumentFragment
-  parent.replaceChild(fragment, node)   ← one DOM mutation per text node
+  parseIconSyntax() → segments (skip if no valid icon)
+  createFragment() → DocumentFragment
+  node.replaceWith(fragment)   ← one DOM mutation per text node
 ```
 
 The collect-then-replace pattern avoids corrupting the TreeWalker by mutating the tree during traversal.
@@ -168,9 +177,9 @@ Editor shows:  "Click [home icon] to go home"
 ── Reading View ──────────────────────────────────────────────
 Obsidian renders: <p>Click !icon[home] to go home</p>
 TreeWalker finds text node "Click !icon[home] to go home"
-Regex extracts "home"
+parseIconSyntax() extracts "home"
 Fragment: [TextNode("Click "), <i>home</i>, TextNode(" to go home")]
-replaceChild() swaps node for fragment
+replaceWith() swaps node for fragment
 Final DOM: <p>Click <i class="material-icons">home</i> to go home</p>
 ```
 
@@ -204,13 +213,13 @@ The `id` attribute prevents duplicate injection across hot-reloads. The `error` 
 | `iconSize` | `"24px"` | `isValidCssSize()` — must match `\d+(\.\d+)?(px\|em\|rem\|%\|vw\|vh\|pt)` |
 | `iconColor` | `"currentColor"` | `isValidCssColor()` — hex, rgb/rgba/hsl, named colors, or `currentColor` |
 
-Invalid input silently falls back to the default. Settings are stored in `.obsidian/plugins/material-icons-inline/data.json`.
+Invalid input silently falls back to the default. Saved values are applied as CSS variables on `document.body`, so they take effect immediately. Settings are stored in `.obsidian/plugins/material-icons-inline/data.json`.
 
 ---
 
 ## Performance
 
-- **CM6 ViewPlugin** re-runs only on `docChanged`, `viewportChanged`, or `selectionSet` — not on every keystroke that doesn't affect icons.
+- **CM6 ViewPlugin** re-runs only on `docChanged`, `viewportChanged`, `selectionSet`, syntax-tree progress, or a Live Preview toggle.
 - **visibleRanges** scanning means only the text currently on screen is processed, not the entire document.
 - **`eq()` on IconWidget** prevents CM6 from recreating DOM elements when the decoration hasn't changed.
 - **TreeWalker** in the post-processor visits only text nodes — element subtrees are skipped automatically.
@@ -221,15 +230,17 @@ Invalid input silently falls back to the default. Settings are stored in `.obsid
 
 ## Testing
 
-Tests live in `__tests__/parse.test.ts` and target `src/parse.ts` exclusively. The Obsidian module is stubbed via `__mocks__/obsidian.ts`. The CM6 editor extension is not unit-tested (it requires a live CM6 instance) — it is covered by manual testing in Obsidian.
+Tests live in `__tests__/`. `parse.test.ts` targets `src/parse.ts`; `main.test.ts` runs the reading-view post-processor against sample HTML. The Obsidian module is stubbed via `__mocks__/obsidian.ts`. The CM6 editor extension is not unit-tested (it needs Obsidian's markdown syntax tree) — it is covered by manual testing in Obsidian.
 
 ```bash
-npm test              # 36 tests across 3 describe blocks
-npm run test:coverage # coverage report for src/parse.ts
+npm test              # all tests
+npm run test:coverage # coverage report
 ```
 
 | Describe block | What is covered |
 |---|---|
+| `reading view post-processor` | Icon replacement, inline code and code blocks left alone, invalid names left as text |
+| `findIconMatches` | Offsets cover the whole token, invalid names skipped |
 | `parseIconSyntax` | Single icon, multiple icons, surrounding text, empty input, whitespace trimming, invalid names, empty brackets, adjacent icons, underscore names |
 | `isValidCssSize` | Valid units (px, em, rem, %, vw, vh, pt), rejection of negative values, injection strings, unitless values |
 | `isValidCssColor` | Hex (3/6/8 digit), rgb/rgba/hsl, named colors, `currentColor`, rejection of JS injection strings |
@@ -240,11 +251,11 @@ npm run test:coverage # coverage report for src/parse.ts
 
 ### Change icon syntax
 
-Edit the regex in both `buildDecorations()` (live preview) and `parseAndCreateIconHTML()` (reading view) in `main.ts`, then update the tests in `__tests__/parse.test.ts`.
+Edit `ICON_PATTERN` in `src/parse.ts` (used by both views) and the `'!icon['` pre-filter in `processIcons()`, then update the tests in `__tests__/`.
 
 ### Add custom icon styling
 
-Extend `IconWidget.toDOM()` and `createIconElement()` in `main.ts`:
+Extend `createIconElement()` in `main.ts` (used by both views):
 
 ```typescript
 icon.setAttribute('data-icon', iconName);
@@ -255,7 +266,7 @@ icon.classList.add('my-custom-class');
 
 1. Add the key to `MaterialIconsSettings` and `DEFAULT_SETTINGS`
 2. Add a `new Setting(...)` block in `MaterialIconsSettingTab.display()`
-3. Pass the new setting into `buildDecorations()` and/or `createIconElement()`
+3. Expose it as a CSS variable in `applySettings()` and read it in `createIconElement()`
 4. Add a validator in `src/parse.ts` with a corresponding test
 
 ### Support offline / self-hosted fonts
@@ -271,6 +282,7 @@ Replace the CDN `<link>` in `addMaterialIconsCSS()` with a bundled `styles.css` 
 | `obsidian` | Plugin API (dev only — excluded from bundle) |
 | `@codemirror/view` | CM6 `ViewPlugin`, `Decoration`, `WidgetType` types (dev only — provided by Obsidian at runtime) |
 | `@codemirror/state` | CM6 `RangeSetBuilder` types (dev only — provided by Obsidian at runtime) |
+| `@codemirror/language` | CM6 `syntaxTree()` for detecting code (dev only — provided by Obsidian at runtime) |
 | `typescript` | Type checking and compilation |
 | `esbuild` | Bundling to CommonJS for Obsidian |
 | `jest` + `ts-jest` | Test runner |
@@ -281,10 +293,10 @@ Replace the CDN `<link>` in `addMaterialIconsCSS()` with a bundled `styles.css` 
 
 ## Known Limitations
 
-1. **Source mode** — CM6 decorations do not apply in Source mode, only in Live Preview. Icons still render in reading view.
+1. **Source mode** — Icons render only in Live Preview; Source mode always shows raw syntax. Icons still render in reading view.
 2. **Online dependency** — requires internet access to load the icon font. An offline vault shows a Notice but icons render as placeholder squares.
 3. **Icon name typos** — invalid names silently render as blank squares (the Material Icons font's placeholder glyph). There is no warning for unrecognised names.
-4. **No escape syntax** — there is no way to display the literal text `!icon[home]` in a rendered note.
+4. **No escape syntax** — the only way to display the literal text `!icon[home]` is inside inline code or a code block.
 
 ---
 

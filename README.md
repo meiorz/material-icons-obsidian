@@ -104,21 +104,25 @@ Invalid values fall back to the default silently.
 1. **Font loading** — On startup, injects a `<link>` for the Material Icons font from Google CDN. Injection is idempotent; a `Notice` is shown if the font fails to load.
 2. **Live Preview** — A CodeMirror 6 `ViewPlugin` scans visible text for `!icon[name]` patterns and replaces them with `Decoration.replace` widgets. Decorations are removed when the cursor enters the token range, revealing the raw syntax.
 3. **Reading view** — A markdown post-processor uses `TreeWalker` to find text nodes and replaces each match with an `<i class="material-icons">` element via `DocumentFragment`.
-4. **Cleanup** — On plugin unload, the injected font `<link>` is removed from `document.head`.
+4. **Code is left alone** — `!icon[...]` inside inline code or code blocks stays as literal text in both views, so you can write about the syntax.
+5. **Styling** — Size and color are CSS variables on `document.body`, so settings changes apply instantly to every rendered icon.
+6. **Cleanup** — On plugin unload, the injected font `<link>` and CSS variables are removed.
 
 ## Customization
 
 ### Change the Syntax
 
-Edit the regex in `parseAndCreateIconHTML()` and `buildDecorations()` in `main.ts`:
+Edit `ICON_PATTERN` in `src/parse.ts` — both Live Preview and reading view use it:
 
 ```typescript
 // Current: !icon[home]
-const iconRegex = /!icon\[([a-z0-9_]+)\]/g;
+const ICON_PATTERN = /!icon\[([^\]]+)\]/g;
 
 // Alternative: {{icon:home}}
-const iconRegex = /{{icon:([a-z0-9_]+)}}/g;
+const ICON_PATTERN = /{{icon:([^}]+)}}/g;
 ```
+
+Reading view also pre-filters text nodes with `'!icon['` in `processIcons()` in `main.ts`; update that string too.
 
 ### Change Default Size or Color
 
@@ -144,7 +148,8 @@ npm run test:coverage # coverage report
 ### Icons not showing in editor
 
 - Confirm the plugin is enabled under **Settings → Community plugins**
-- Make sure you are in **Live Preview** mode, not Source mode (Source mode does not render decorations)
+- Make sure you are in **Live Preview** mode, not Source mode (Source mode always shows raw syntax)
+- Icons inside inline code or code blocks are intentionally not rendered
 - Reload the vault with `Ctrl+R`
 
 ### Icons not showing in reading view
@@ -156,10 +161,6 @@ npm run test:coverage # coverage report
 
 - Double-check the name at [Google Material Icons](https://fonts.google.com/icons)
 - Names must be lowercase with underscores: `check_circle` not `check circle` or `Check_Circle`
-
-### Settings change not reflected
-
-- Settings apply on next render; toggle reading view or move the cursor out of the icon token to refresh
 
 ## Common Icons
 

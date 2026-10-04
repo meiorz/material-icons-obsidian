@@ -1,4 +1,4 @@
-import { parseIconSyntax, isValidCssSize, isValidCssColor } from '../src/parse';
+import { findIconMatches, parseIconSyntax, isValidCssSize, isValidCssColor } from '../src/parse';
 
 describe('parseIconSyntax', () => {
 	test('parses a single icon', () => {
@@ -61,6 +61,20 @@ describe('parseIconSyntax', () => {
 	test('handles underscore_names used by Material Icons', () => {
 		expect(parseIconSyntax('!icon[arrow_back]')).toEqual([
 			{ type: 'icon', value: 'arrow_back' },
+		]);
+	});
+});
+
+describe('findIconMatches', () => {
+	test('returns offsets covering the full token', () => {
+		expect(findIconMatches('Hi !icon[ home ] there')).toEqual([
+			{ from: 3, to: 16, name: 'home' },
+		]);
+	});
+
+	test('skips invalid names', () => {
+		expect(findIconMatches('!icon[Bad Name] !icon[star]')).toEqual([
+			{ from: 16, to: 27, name: 'star' },
 		]);
 	});
 });
